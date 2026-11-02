@@ -1,0 +1,1083 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D 아이스크림 가게 - 3라운드 & 방명록</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Jua&display=swap');
+        * {
+            font-family: 'Jua', sans-serif;
+            user-select: none;
+        }
+        body {
+            overflow: hidden;
+            background-color: #1a1a1a;
+        }
+        .fever-active {
+            animation: pulse-glow 0.5s infinite alternate;
+        }
+        @keyframes pulse-glow {
+            0% { box-shadow: inset 0 0 30px #ff007f; }
+            100% { box-shadow: inset 0 0 60px #ffaa00; }
+        }
+        .btn-visual {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.15s ease-in-out;
+        }
+        .btn-visual:active {
+            transform: scale(0.92);
+        }
+    </style>
+</head>
+<body class="flex flex-col h-screen w-screen relative">
+
+    <div id="canvas-container" class="w-full h-full absolute inset-0"></div>
+
+    <div id="ui-overlay" class="relative z-10 flex flex-col justify-between h-full p-4 md:p-6 pointer-events-none">
+        
+        <div class="flex justify-between items-start gap-4">
+            
+            <div class="bg-white/95 backdrop-blur-md rounded-3xl p-5 shadow-2xl border-4 border-pink-400 pointer-events-auto min-w-[220px]">
+                <div class="flex items-center justify-between mb-1">
+                    <h1 class="text-xl font-black text-pink-600">🍦 아이스크림 가게</h1>
+                    <span id="round-badge" class="bg-pink-500 text-white text-xs px-2.5 py-1 rounded-full font-black">ROUND 1</span>
+                </div>
+                <div class="text-xl font-bold text-gray-800">점수: <span id="score" class="text-3xl font-black text-indigo-600">0</span>점</div>
+                <div class="text-base text-gray-500 font-bold">목표: <span id="target-score" class="text-pink-500">800</span>점</div>
+                <div class="mt-2 flex items-center gap-2 bg-amber-100 px-3 py-1 rounded-2xl border-2 border-amber-300">
+                    <span class="text-sm font-black text-amber-800">🔥 콤보</span>
+                    <span id="combo-count" class="text-2xl font-black text-amber-600">0</span>
+                </div>
+            </div>
+
+            <div class="flex flex-col items-center gap-2 pointer-events-auto">
+                <div class="bg-black/85 px-8 py-3 rounded-full text-white font-black text-3xl border-4 border-yellow-400 shadow-2xl">
+                    ⏱️ <span id="time-left" class="text-yellow-300">60</span>초
+                </div>
+                <div id="fever-banner" class="hidden bg-gradient-to-r from-yellow-400 via-red-500 to-pink-500 text-white font-black text-2xl px-8 py-2 rounded-full animate-bounce shadow-2xl border-2 border-white">
+                    🔥 FEVER TIME (2배 점수) 🔥
+                </div>
+            </div>
+
+            <div id="order-card" class="bg-amber-50/95 backdrop-blur-md rounded-3xl p-5 shadow-2xl border-4 border-amber-300 pointer-events-auto min-w-[280px] max-w-[340px]">
+                <div class="flex justify-between items-center mb-2">
+                    <span class="font-black text-xl text-amber-900" id="customer-name">😀 일반 손님</span>
+                    <span id="patience-text" class="text-sm px-3 py-1 font-bold rounded-full bg-green-200 text-green-900 border border-green-400">보통</span>
+                </div>
+                
+                <div class="w-full bg-gray-300 h-4 rounded-full overflow-hidden mb-3 border border-gray-400">
+                    <div id="patience-bar" class="bg-green-500 h-full w-full transition-all duration-200"></div>
+                </div>
+
+                <div class="bg-white/80 rounded-2xl p-3 border-2 border-amber-200">
+                    <div class="text-xs text-gray-500 font-bold mb-1">손님이 원하는 조합</div>
+                    <div id="order-visuals" class="flex flex-wrap items-center gap-2"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="timing-minigame" class="hidden self-center bg-black/90 p-6 rounded-3xl shadow-2xl pointer-events-auto text-center border-4 border-pink-400 min-w-[320px]">
+            <div class="text-white font-black mb-3 text-xl">🎯 녹색 영역에 맞춰 스쿱 누르기!</div>
+            <div class="w-72 h-8 bg-gray-800 rounded-full relative overflow-hidden border-2 border-white mx-auto shadow-inner">
+                <div class="absolute left-1/3 w-1/3 h-full bg-green-500/90 border-x-2 border-yellow-300"></div>
+                <div id="timing-marker" class="absolute w-3 h-full bg-yellow-300 top-0 left-0 shadow-md"></div>
+            </div>
+            <button id="scoop-press-btn" class="mt-4 bg-pink-500 hover:bg-pink-600 active:scale-95 text-white font-black text-xl px-8 py-3 rounded-2xl transition shadow-lg border-2 border-white">
+                🍨 스쿱 담기!
+            </button>
+        </div>
+
+        <div class="bg-white/95 backdrop-blur-md rounded-3xl p-5 shadow-2xl border-4 border-pink-300 pointer-events-auto max-w-5xl mx-auto w-full">
+            <div class="grid grid-cols-4 gap-4 text-center">
+                
+                <div class="bg-pink-50/80 p-3 rounded-2xl border-2 border-pink-200">
+                    <div class="text-base font-black text-pink-700 mb-2">1. 용기 선택</div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button onclick="selectContainer('Cone')" class="btn-visual bg-amber-100 hover:bg-amber-200 text-amber-900 p-3 rounded-2xl border-2 border-amber-300 font-black text-lg">
+                            <span class="text-3xl mb-1">🍦</span>
+                            <span>콘</span>
+                        </button>
+                        <button onclick="selectContainer('Cup')" class="btn-visual bg-blue-100 hover:bg-blue-200 text-blue-900 p-3 rounded-2xl border-2 border-blue-300 font-black text-lg">
+                            <span class="text-3xl mb-1">🍧</span>
+                            <span>컵</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="bg-amber-50/80 p-3 rounded-2xl border-2 border-amber-200">
+                    <div class="text-base font-black text-amber-800 mb-2">2. 아이스크림 맛</div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button onclick="startScoopMinigame('Vanilla')" class="btn-visual bg-amber-100 hover:bg-amber-200 text-amber-900 py-2 px-1 rounded-xl border border-amber-300 font-black text-base">
+                            <span class="text-2xl">🟡</span>
+                            <span>바닐라</span>
+                        </button>
+                        <button onclick="startScoopMinigame('Choco')" class="btn-visual bg-stone-700 hover:bg-stone-800 text-amber-100 py-2 px-1 rounded-xl border border-stone-900 font-black text-base">
+                            <span class="text-2xl">🟤</span>
+                            <span>초코</span>
+                        </button>
+                        <button onclick="startScoopMinigame('Strawberry')" class="btn-visual bg-pink-200 hover:bg-pink-300 text-pink-900 py-2 px-1 rounded-xl border border-pink-400 font-black text-base">
+                            <span class="text-2xl">🔴</span>
+                            <span>딸기</span>
+                        </button>
+                        <button onclick="startScoopMinigame('Mint')" class="btn-visual bg-emerald-200 hover:bg-emerald-300 text-emerald-900 py-2 px-1 rounded-xl border border-emerald-400 font-black text-base">
+                            <span class="text-2xl">🟢</span>
+                            <span>민트</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="bg-purple-50/80 p-3 rounded-2xl border-2 border-purple-200">
+                    <div class="text-base font-black text-purple-800 mb-2">3. 시럽 뿌리기</div>
+                    <div class="grid grid-cols-2 gap-2 h-[105px] items-center">
+                        <button onclick="addSyrup('ChocoSyrup')" class="btn-visual bg-stone-800 hover:bg-stone-900 text-white h-full rounded-2xl border-2 border-stone-900 font-black text-base">
+                            <span class="text-2xl mb-1">🍫</span>
+                            <span>초코시럽</span>
+                        </button>
+                        <button onclick="addSyrup('StrawberrySyrup')" class="btn-visual bg-red-500 hover:bg-red-600 text-white h-full rounded-2xl border-2 border-red-600 font-black text-base">
+                            <span class="text-2xl mb-1">🍓</span>
+                            <span>딸기시럽</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="bg-emerald-50/80 p-3 rounded-2xl border-2 border-emerald-200">
+                    <div class="text-base font-black text-emerald-800 mb-2">4. 토핑 & 완성</div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button onclick="addTopping('Cherry')" class="btn-visual bg-red-500 hover:bg-red-600 text-white py-2 rounded-xl font-black text-sm">
+                            <span class="text-xl">🍒</span>
+                            <span>체리</span>
+                        </button>
+                        <button onclick="addTopping('Sprinkles')" class="btn-visual bg-purple-500 hover:bg-purple-600 text-white py-2 rounded-xl font-black text-sm">
+                            <span class="text-xl">✨</span>
+                            <span>스프링클</span>
+                        </button>
+                        <button onclick="addTopping('Cookie')" class="btn-visual bg-amber-700 hover:bg-amber-800 text-white py-2 rounded-xl font-black text-sm">
+                            <span class="text-xl">🍪</span>
+                            <span>쿠키</span>
+                        </button>
+                        <button onclick="addTopping('Wafer')" class="btn-visual bg-yellow-600 hover:bg-yellow-700 text-white py-2 rounded-xl font-black text-sm">
+                            <span class="text-xl">🍫</span>
+                            <span>웨이퍼</span>
+                        </button>
+                        <button onclick="addTopping('Nuts')" class="btn-visual bg-orange-700 hover:bg-orange-800 text-white py-2 rounded-xl font-black text-sm">
+                            <span class="text-xl">🥜</span>
+                            <span>견과류</span>
+                        </button>
+                        <button onclick="addTopping('Marshmallow')" class="btn-visual bg-pink-400 hover:bg-pink-500 text-white py-2 rounded-xl font-black text-sm">
+                            <span class="text-xl">☁️</span>
+                            <span>마시멜로</span>
+                        </button>
+                        <button onclick="clearCurrent()" class="btn-visual bg-gray-400 hover:bg-gray-500 text-white py-2 rounded-xl font-black text-sm">
+                            <span class="text-xl">🗑️</span>
+                            <span>버리기</span>
+                        </button>
+                        <button onclick="serveIceCream()" class="btn-visual bg-green-500 hover:bg-green-600 text-white py-2 rounded-xl font-black text-base shadow-lg border-2 border-green-600">
+                            <span class="text-xl">✅</span>
+                            <span>제출!</span>
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+    </div>
+
+    <div id="game-modal" class="hidden absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl p-6 max-w-lg w-full text-center shadow-2xl border-4 border-pink-400 max-h-[95vh] overflow-y-auto">
+            <h2 id="modal-title" class="text-3xl font-black text-gray-800 mb-1">🎉 라운드 클리어!</h2>
+            <p id="modal-desc" class="text-lg font-bold text-gray-600 mb-3">다음 단계로 이동할 준비를 하세요.</p>
+            <div class="text-3xl font-black text-pink-500 mb-4"><span id="final-score">0</span>점</div>
+
+            <div id="guestbook-section" class="bg-pink-50 p-3 rounded-2xl border-2 border-pink-200 mb-4">
+                <div class="text-sm font-black text-gray-700 mb-2">🎨 방명록에 소감이나 싸인을 남겨주세요!</div>
+                <canvas id="guestbook-canvas" width="360" height="160" class="bg-white border-2 border-pink-300 rounded-xl mx-auto cursor-crosshair shadow-inner"></canvas>
+                <div class="flex justify-center items-center gap-2 mt-2">
+                    <button onclick="setCanvasColor('#ec4899')" class="w-6 h-6 rounded-full bg-pink-500 border border-black/20"></button>
+                    <button onclick="setCanvasColor('#3b82f6')" class="w-6 h-6 rounded-full bg-blue-500 border border-black/20"></button>
+                    <button onclick="setCanvasColor('#10b981')" class="w-6 h-6 rounded-full bg-emerald-500 border border-black/20"></button>
+                    <button onclick="setCanvasColor('#000000')" class="w-6 h-6 rounded-full bg-black border border-black/20"></button>
+                    <button onclick="clearGuestbookCanvas()" class="ml-2 text-xs bg-gray-200 hover:bg-gray-300 px-3 py-1 rounded-lg font-bold">지우기</button>
+                </div>
+            </div>
+
+            <div id="record-section" class="hidden bg-indigo-50 p-3 rounded-2xl border-2 border-indigo-200 mb-4 text-left">
+                <div class="text-base font-black text-indigo-700 mb-2 text-center">🏆 방명록 남기기</div>
+                <div class="flex flex-wrap justify-center gap-x-4 gap-y-1 mb-3 text-sm font-black text-gray-700">
+                    <span>⏱️ 총 소요 시간 <span id="record-time" class="text-indigo-600">0분 0초</span></span>
+                    <span>⭐ 최종 점수 <span id="record-score" class="text-pink-500">0</span>점</span>
+                </div>
+                <div id="record-form">
+                    <input id="record-nickname" type="text" maxlength="12" placeholder="닉네임 (필수, 12자까지)" style="user-select:text; -webkit-user-select:text;" class="w-full border-2 border-indigo-200 rounded-xl px-3 py-2 text-base font-bold mb-2 focus:outline-none focus:border-indigo-400">
+                    <input id="record-comment" type="text" maxlength="40" placeholder="한마디 / 플레이 소감 (선택, 40자까지)" style="user-select:text; -webkit-user-select:text;" class="w-full border-2 border-indigo-200 rounded-xl px-3 py-2 text-base font-bold mb-2 focus:outline-none focus:border-indigo-400">
+                    <div id="record-error" class="hidden text-center text-sm font-black text-red-600 mb-2">닉네임을 입력해 주세요.</div>
+                    <button id="record-save-btn" onclick="saveGuestbookEntry()" class="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-black py-2.5 rounded-xl text-base transition shadow border-2 border-white">📝 방명록 저장</button>
+                </div>
+                <div id="record-saved" class="hidden text-center text-sm font-black text-green-700">✅ 방명록이 저장되었습니다!</div>
+            </div>
+
+            <div class="space-y-2">
+                <button id="next-action-btn" onclick="handleNextAction()" class="w-full bg-pink-500 hover:bg-pink-600 text-white font-black py-3 rounded-2xl text-xl transition shadow-lg border-2 border-white">
+                    다음 라운드 도전!
+                </button>
+                <div class="grid grid-cols-2 gap-2">
+                    <button onclick="playReplay()" class="bg-indigo-500 hover:bg-indigo-600 text-white font-black py-2.5 rounded-xl text-base transition shadow">
+                        🎬 내 플레이 리플레이
+                    </button>
+                    <button onclick="showIntro()" class="bg-gray-500 hover:bg-gray-600 text-white font-black py-2.5 rounded-xl text-base transition shadow">
+                        🔄 처음부터 다시하기
+                    </button>
+                </div>
+                <button onclick="openGuestbookPanel()" class="w-full bg-white hover:bg-indigo-50 text-indigo-600 font-black py-2.5 rounded-xl text-base transition shadow border-2 border-indigo-300">
+                    📖 방명록 보기
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="guestbook-modal" class="hidden absolute inset-0 bg-black/80 z-[60] flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl p-5 max-w-lg w-full shadow-2xl border-4 border-pink-400 max-h-[90vh] flex flex-col">
+            <div class="flex items-center justify-between mb-1">
+                <h2 class="text-2xl font-black text-pink-600">📖 아이스크림 가게 방명록</h2>
+                <button onclick="closeGuestbookPanel()" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-black px-4 py-1.5 rounded-xl text-base transition">✖ 닫기</button>
+            </div>
+            <div id="guestbook-notice" class="hidden text-center text-sm font-black text-green-700 bg-green-100 border-2 border-green-300 rounded-xl py-2 my-1">✅ 방명록이 저장되었습니다!</div>
+            <div id="guestbook-count" class="text-xs font-bold text-gray-500 mb-2"></div>
+            <div id="guestbook-list" class="flex-1 overflow-y-auto space-y-2 pr-1 min-h-[160px]"></div>
+            <div class="mt-3 flex justify-end">
+                <button onclick="clearGuestbook()" class="bg-red-500 hover:bg-red-600 text-white font-black px-4 py-2 rounded-xl text-sm transition shadow">🗑️ 방명록 전체 삭제</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="intro-screen" class="absolute inset-0 z-[70] flex items-center justify-center p-4 bg-gradient-to-b from-pink-200 via-pink-100 to-amber-100 transition-opacity duration-500">
+        <div class="bg-white/95 backdrop-blur-md rounded-3xl p-8 max-w-lg w-full text-center shadow-2xl border-4 border-pink-400 max-h-[95vh] overflow-y-auto">
+            <div class="text-7xl mb-2 animate-bounce">🍦</div>
+            <h1 class="text-4xl font-black text-pink-600 mb-2">3D 아이스크림 가게</h1>
+            <span class="inline-block bg-pink-500 text-white text-sm px-3 py-1 rounded-full font-black mb-4">3라운드 &amp; 방명록</span>
+            <div class="bg-amber-50 border-2 border-amber-200 rounded-2xl p-4 mb-6 text-left space-y-1.5 text-base font-bold text-amber-900">
+                <div>📋 손님의 주문을 보고 용기·맛·시럽·토핑을 골라 만들어요.</div>
+                <div>🎯 스쿱 타이밍을 맞추면 퍼펙트 보너스 점수!</div>
+                <div>🔥 콤보를 이어가면 피버 타임이 찾아와요.</div>
+                <div>🏆 3라운드의 목표 점수를 모두 달성해 보세요!</div>
+            </div>
+            <button id="start-game-btn" onclick="startGame()" class="btn-visual w-full bg-pink-500 hover:bg-pink-600 text-white font-black text-3xl py-4 rounded-3xl shadow-2xl border-4 border-white">
+                ▶ 시작하기
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function playSound(type) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            const now = audioCtx.currentTime;
+            if (type === 'pop') {
+                osc.frequency.setValueAtTime(400, now);
+                osc.frequency.exponentialRampToValueAtTime(800, now + 0.08);
+                gain.gain.setValueAtTime(0.3, now);
+                gain.gain.linearRampToValueAtTime(0, now + 0.08);
+                osc.start(now); osc.stop(now + 0.08);
+            } else if (type === 'perfect') {
+                osc.frequency.setValueAtTime(523.25, now);
+                osc.frequency.setValueAtTime(659.25, now + 0.08);
+                gain.gain.setValueAtTime(0.3, now);
+                gain.gain.linearRampToValueAtTime(0, now + 0.2);
+                osc.start(now); osc.stop(now + 0.2);
+            } else if (type === 'fail') {
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(200, now);
+                osc.frequency.linearRampToValueAtTime(80, now + 0.25);
+                gain.gain.setValueAtTime(0.3, now);
+                gain.gain.linearRampToValueAtTime(0, now + 0.25);
+                osc.start(now); osc.stop(now + 0.25);
+            }
+        }
+
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xfce7f3);
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 3, 6);
+        camera.lookAt(0, 0, 0);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        container.appendChild(renderer.domElement);
+
+        scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
+        dirLight.position.set(5, 10, 7);
+        dirLight.castShadow = true;
+        scene.add(dirLight);
+
+        const table = new THREE.Mesh(new THREE.BoxGeometry(4, 0.2, 2.5), new THREE.MeshStandardMaterial({ color: 0xfbcfe8, roughness: 0.3 }));
+        table.position.y = -0.1;
+        table.receiveShadow = true;
+        scene.add(table);
+
+        let currentRound = 1;
+        const ROUND_CONFIGS = {
+            1: { targetScore: 800, time: 60, maxScoops: 2, speedMult: 1.0 },
+            2: { targetScore: 1500, time: 50, maxScoops: 2, speedMult: 1.3 },
+            3: { targetScore: 2500, time: 40, maxScoops: 3, speedMult: 1.7 }
+        };
+
+        let score = 0, timeLeft = 60, combo = 0, isFever = false, feverTimer = null, gameActive = true;
+        let currentBuild = { container: null, flavors: [], syrup: null, toppings: [], quality: 'Good' };
+        let currentOrder = null;
+        let currentMeshGroup = new THREE.Group();
+        scene.add(currentMeshGroup);
+
+        let customerPatience = 100, patienceInterval = null, gameTimer = null, pendingFlavor = null;
+        let actionLog = [], isReplaying = false;
+
+        const FLAVOR_COLORS = { Vanilla: 0xfff8dc, Choco: 0x5c4033, Strawberry: 0xffb6c1, Mint: 0x98ff98 };
+        const CUSTOMER_TYPES = [
+            { name: "😀 느긋한 손님", speed: 0.8, scoreMult: 1.0 },
+            { name: "😐 보통 손님", speed: 1.2, scoreMult: 1.2 },
+            { name: "😡 성급한 손님", speed: 2.0, scoreMult: 1.5 }
+        ];
+
+        function generateOrder() {
+            const config = ROUND_CONFIGS[currentRound];
+            const custType = CUSTOMER_TYPES[Math.floor(Math.random() * CUSTOMER_TYPES.length)];
+            const containers = ['Cone', 'Cup'];
+            const flavorsList = ['Vanilla', 'Choco', 'Strawberry', 'Mint'];
+            const syrupsList = [null, 'ChocoSyrup', 'StrawberrySyrup'];
+            const toppingsList = [null, 'Cherry', 'Sprinkles', 'Cookie', 'Wafer', 'Nuts', 'Marshmallow'];
+
+            const flavorCount = Math.min(config.maxScoops, Math.random() > 0.5 ? 2 : 1);
+            const chosenFlavors = [];
+            for(let i=0; i<flavorCount; i++) chosenFlavors.push(flavorsList[Math.floor(Math.random() * flavorsList.length)]);
+
+            currentOrder = {
+                customer: custType,
+                container: containers[Math.floor(Math.random() * containers.length)],
+                flavors: chosenFlavors,
+                syrup: syrupsList[Math.floor(Math.random() * syrupsList.length)],
+                topping: toppingsList[Math.floor(Math.random() * toppingsList.length)]
+            };
+
+            customerPatience = 100;
+            updateOrderUI();
+            startPatienceTimer();
+        }
+
+        function updateOrderUI() {
+            document.getElementById('customer-name').innerText = currentOrder.customer.name;
+            document.getElementById('patience-text').innerText = currentOrder.customer.name.split(' ')[1];
+            const visualContainer = document.getElementById('order-visuals');
+            visualContainer.innerHTML = '';
+
+            const coneCupTag = document.createElement('div');
+            coneCupTag.className = 'flex items-center gap-1 bg-amber-100 border border-amber-300 px-2 py-1 rounded-xl text-sm font-black text-amber-900';
+            coneCupTag.innerHTML = `${currentOrder.container === 'Cone' ? '🍦 콘' : '🍧 컵'}`;
+            visualContainer.appendChild(coneCupTag);
+
+            const flavorNames = {
+                Vanilla: '바닐라',
+                Choco: '초코',
+                Strawberry: '딸기',
+                Mint: '민트'
+            };
+            currentOrder.flavors.forEach(f => {
+                const flavorTag = document.createElement('div');
+                flavorTag.className = 'flex items-center gap-1 bg-pink-100 border border-pink-300 px-2 py-1 rounded-xl text-sm font-black text-pink-900';
+                const flavorIcon = f === 'Vanilla' ? '🟡' : f === 'Choco' ? '🟤' : f === 'Strawberry' ? '🔴' : '🟢';
+                flavorTag.textContent = `${flavorIcon} ${flavorNames[f] || f}`;
+                visualContainer.appendChild(flavorTag);
+            });
+
+            if (currentOrder.syrup) {
+                const syrupTag = document.createElement('div');
+                syrupTag.className = 'flex items-center gap-1 bg-purple-100 border border-purple-300 px-2 py-1 rounded-xl text-sm font-black text-purple-900';
+                syrupTag.innerHTML = `${currentOrder.syrup === 'ChocoSyrup' ? '🍫 초코시럽' : '🍓 딸기시럽'}`;
+                visualContainer.appendChild(syrupTag);
+            }
+
+            if (currentOrder.topping) {
+                const toppingTag = document.createElement('div');
+                toppingTag.className = 'flex items-center gap-1 bg-emerald-100 border border-emerald-300 px-2 py-1 rounded-xl text-sm font-black text-emerald-900';
+                const toppingLabels = {
+                    Cherry: '🍒 체리',
+                    Sprinkles: '✨ 스프링클',
+                    Cookie: '🍪 쿠키',
+                    Wafer: '🍫 웨이퍼',
+                    Nuts: '🥜 견과류',
+                    Marshmallow: '☁️ 마시멜로'
+                };
+                toppingTag.textContent = toppingLabels[currentOrder.topping] || currentOrder.topping;
+                visualContainer.appendChild(toppingTag);
+            }
+        }
+
+        function startPatienceTimer() {
+            clearInterval(patienceInterval);
+            patienceInterval = setInterval(() => {
+                if (!gameActive || isReplaying) return;
+                customerPatience -= currentOrder.customer.speed * ROUND_CONFIGS[currentRound].speedMult;
+                const bar = document.getElementById('patience-bar');
+                bar.style.width = Math.max(0, customerPatience) + '%';
+                bar.className = customerPatience < 30 ? 'bg-red-500 h-full transition-all duration-200' : customerPatience < 60 ? 'bg-yellow-500 h-full transition-all duration-200' : 'bg-green-500 h-full transition-all duration-200';
+
+                if (customerPatience <= 0) {
+                    clearInterval(patienceInterval);
+                    playSound('fail');
+                    combo = 0;
+                    document.getElementById('combo-count').innerText = combo;
+                    clearCurrent();
+                    generateOrder();
+                }
+            }, 200);
+        }
+
+        function selectContainer(type, fromReplay) {
+            if (currentBuild.container || (isReplaying && !fromReplay)) return;
+            currentBuild.container = type;
+            playSound('pop');
+            logAction({ action: 'container', type: type });
+
+            if (type === 'Cone') {
+                const mesh = new THREE.Mesh(new THREE.ConeGeometry(0.4, 1.2, 16), new THREE.MeshStandardMaterial({ color: 0xd2b48c, roughness: 0.8 }));
+                mesh.rotation.x = Math.PI; mesh.position.y = 0.6;
+                currentMeshGroup.add(mesh);
+            } else {
+                const mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.4, 0.7, 16), new THREE.MeshStandardMaterial({ color: 0x60a5fa, roughness: 0.3 }));
+                mesh.position.y = 0.35;
+                currentMeshGroup.add(mesh);
+            }
+        }
+
+        let markerPos = 0, markerDir = 1, timingAnimFrame = null;
+        let isTimingActive = false;
+        let lastTimingFrame = 0;
+
+        function startScoopMinigame(flavor) {
+            if (!currentBuild.container ||
+                currentBuild.flavors.length >= ROUND_CONFIGS[currentRound].maxScoops ||
+                isReplaying || isTimingActive) return;
+
+            pendingFlavor = flavor;
+            isTimingActive = true;
+            markerPos = 0;
+            markerDir = 1;
+            lastTimingFrame = 0;
+
+            if (timingAnimFrame !== null) {
+                cancelAnimationFrame(timingAnimFrame);
+                timingAnimFrame = null;
+            }
+
+            document.getElementById('timing-minigame').classList.remove('hidden');
+            timingAnimFrame = requestAnimationFrame(animateTimingMarker);
+        }
+
+        function animateTimingMarker(timestamp) {
+            if (!isTimingActive) return;
+
+            if (!lastTimingFrame) lastTimingFrame = timestamp;
+            const delta = Math.min(timestamp - lastTimingFrame, 32);
+            lastTimingFrame = timestamp;
+
+            // 프레임 수에 따라 속도가 달라지지 않도록 시간 기준으로 이동
+            markerPos += (delta / 16.67) * 2.5 * markerDir;
+            if (markerPos >= 96) {
+                markerPos = 96;
+                markerDir = -1;
+            } else if (markerPos <= 0) {
+                markerPos = 0;
+                markerDir = 1;
+            }
+
+            document.getElementById('timing-marker').style.left = markerPos + '%';
+            timingAnimFrame = requestAnimationFrame(animateTimingMarker);
+        }
+
+        document.getElementById('scoop-press-btn').onclick = () => {
+            if (!isTimingActive || !pendingFlavor) return;
+
+            isTimingActive = false;
+            if (timingAnimFrame !== null) {
+                cancelAnimationFrame(timingAnimFrame);
+                timingAnimFrame = null;
+            }
+
+            document.getElementById('timing-minigame').classList.add('hidden');
+            currentBuild.quality = (markerPos >= 33 && markerPos <= 66) ? 'Perfect' : 'Good';
+            const flavorToAdd = pendingFlavor;
+            pendingFlavor = null;
+
+            playSound(currentBuild.quality === 'Perfect' ? 'perfect' : 'pop');
+            addScoopMesh(flavorToAdd);
+        };
+
+        function addScoopMesh(flavor) {
+            currentBuild.flavors.push(flavor);
+            logAction({ action: 'scoop', flavor: flavor, quality: currentBuild.quality });
+            const level = currentBuild.flavors.length;
+            const yPos = currentBuild.container === 'Cone' ? 1.1 + (level - 1) * 0.5 : 0.6 + (level - 1) * 0.5;
+            const scale = currentBuild.quality === 'Perfect' ? 1.1 : 0.9;
+            const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.45 * scale, 16, 16), new THREE.MeshStandardMaterial({ color: FLAVOR_COLORS[flavor], roughness: 0.6 }));
+            mesh.position.y = yPos;
+            currentMeshGroup.add(mesh);
+        }
+
+        function addSyrup(syrupType, fromReplay) {
+            if (currentBuild.flavors.length === 0 || currentBuild.syrup || (isReplaying && !fromReplay)) return;
+
+            currentBuild.syrup = syrupType;
+            playSound('pop');
+            logAction({ action: 'syrup', type: syrupType });
+
+            const level = currentBuild.flavors.length;
+            const scoopY = currentBuild.container === 'Cone'
+                ? 1.1 + (level - 1) * 0.5
+                : 0.6 + (level - 1) * 0.5;
+            const scoopScale = currentBuild.quality === 'Perfect' ? 1.1 : 0.9;
+            const radius = 0.45 * scoopScale;
+
+            // 줄무늬나 방울 대신 스쿱 표면 전체에 얇게 색을 입힌 코팅
+            const coatingColor = syrupType === 'ChocoSyrup' ? 0x542b19 : 0xf04468;
+            const coating = new THREE.Mesh(
+                new THREE.SphereGeometry(radius * 1.012, 32, 24),
+                new THREE.MeshStandardMaterial({
+                    color: coatingColor,
+                    roughness: 0.3,
+                    metalness: 0,
+                    transparent: true,
+                    opacity: 0.78
+                })
+            );
+            coating.position.y = scoopY;
+            coating.castShadow = true;
+            coating.receiveShadow = true;
+            currentMeshGroup.add(coating);
+        }
+
+        function addTopping(toppingType, fromReplay) {
+            if (currentBuild.flavors.length === 0 || currentBuild.toppings.includes(toppingType) || (isReplaying && !fromReplay)) return;
+            currentBuild.toppings.push(toppingType);
+            playSound('pop');
+            logAction({ action: 'topping', type: toppingType });
+
+            const topY = currentBuild.container === 'Cone'
+                ? 1.1 + (currentBuild.flavors.length - 1) * 0.5 + 0.48
+                : 0.6 + (currentBuild.flavors.length - 1) * 0.5 + 0.48;
+
+            if (toppingType === 'Cherry') {
+                const cherry = new THREE.Mesh(
+                    new THREE.SphereGeometry(0.12, 16, 12),
+                    new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.18 })
+                );
+                cherry.position.set(0, topY, 0);
+                currentMeshGroup.add(cherry);
+
+                const stem = new THREE.Mesh(
+                    new THREE.CylinderGeometry(0.008, 0.008, 0.12, 6),
+                    new THREE.MeshStandardMaterial({ color: 0x365314 })
+                );
+                stem.position.set(0.015, topY + 0.12, 0);
+                stem.rotation.z = -0.25;
+                currentMeshGroup.add(stem);
+
+            } else if (toppingType === 'Sprinkles') {
+                const sprinkleColors = [0xff4d6d, 0xffd166, 0x4ecdc4, 0x8b5cf6, 0xffffff];
+                for (let i = 0; i < 18; i++) {
+                    const mesh = new THREE.Mesh(
+                        new THREE.CylinderGeometry(0.018, 0.018, 0.075, 6),
+                        new THREE.MeshStandardMaterial({ color: sprinkleColors[i % sprinkleColors.length], roughness: 0.45 })
+                    );
+                    const angle = Math.random() * Math.PI * 2;
+                    const distance = Math.sqrt(Math.random()) * 0.29;
+                    mesh.position.set(Math.cos(angle) * distance, topY + Math.random() * 0.07, Math.sin(angle) * distance);
+                    mesh.rotation.set(Math.random() * 0.5, Math.random() * Math.PI, Math.random() * 0.5);
+                    currentMeshGroup.add(mesh);
+                }
+
+            } else if (toppingType === 'Cookie') {
+                const cookie = new THREE.Mesh(
+                    new THREE.CylinderGeometry(0.13, 0.13, 0.045, 20),
+                    new THREE.MeshStandardMaterial({ color: 0x9a5b2e, roughness: 0.9 })
+                );
+                cookie.position.set(-0.13, topY + 0.025, 0.03);
+                cookie.rotation.z = -0.2;
+                currentMeshGroup.add(cookie);
+
+                for (let i = 0; i < 5; i++) {
+                    const chip = new THREE.Mesh(
+                        new THREE.SphereGeometry(0.018, 8, 6),
+                        new THREE.MeshStandardMaterial({ color: 0x3b2417 })
+                    );
+                    chip.position.set(-0.13 + (Math.random() - 0.5) * 0.18, topY + 0.05, 0.03 + (Math.random() - 0.5) * 0.16);
+                    currentMeshGroup.add(chip);
+                }
+
+            } else if (toppingType === 'Wafer') {
+                const wafer = new THREE.Mesh(
+                    new THREE.BoxGeometry(0.13, 0.48, 0.055),
+                    new THREE.MeshStandardMaterial({ color: 0xd9a441, roughness: 0.75 })
+                );
+                wafer.position.set(0.2, topY + 0.18, 0);
+                wafer.rotation.z = -0.22;
+                currentMeshGroup.add(wafer);
+
+            } else if (toppingType === 'Nuts') {
+                for (let i = 0; i < 12; i++) {
+                    const nut = new THREE.Mesh(
+                        new THREE.DodecahedronGeometry(0.045, 0),
+                        new THREE.MeshStandardMaterial({ color: i % 2 ? 0xb7793f : 0xe0b36c, roughness: 0.85 })
+                    );
+                    const angle = Math.random() * Math.PI * 2;
+                    const distance = Math.random() * 0.27;
+                    nut.position.set(Math.cos(angle) * distance, topY + Math.random() * 0.06, Math.sin(angle) * distance);
+                    currentMeshGroup.add(nut);
+                }
+
+            } else if (toppingType === 'Marshmallow') {
+                for (let i = 0; i < 3; i++) {
+                    const marshmallow = new THREE.Mesh(
+                        new THREE.SphereGeometry(0.075, 12, 10),
+                        new THREE.MeshStandardMaterial({ color: 0xfff7f2, roughness: 0.8 })
+                    );
+                    const angle = (i / 3) * Math.PI * 2;
+                    marshmallow.position.set(Math.cos(angle) * 0.16, topY + 0.045, Math.sin(angle) * 0.16);
+                    marshmallow.scale.set(1, 0.82, 1);
+                    currentMeshGroup.add(marshmallow);
+                }
+            }
+        }
+
+        function clearCurrent() {
+            isTimingActive = false;
+            if (timingAnimFrame !== null) {
+                cancelAnimationFrame(timingAnimFrame);
+                timingAnimFrame = null;
+            }
+            pendingFlavor = null;
+            document.getElementById('timing-minigame').classList.add('hidden');
+
+            currentBuild = { container: null, flavors: [], syrup: null, toppings: [], quality: 'Good' };
+            while(currentMeshGroup.children.length > 0) currentMeshGroup.remove(currentMeshGroup.children[0]);
+        }
+
+        function logAction(data) {
+            if (!isReplaying) actionLog.push({ ...data, time: Date.now() });
+        }
+
+        function serveIceCream() {
+            if (!currentBuild.container || isReplaying) return;
+            logAction({ action: 'serve' });
+
+            const isContainerMatch = currentBuild.container === currentOrder.container;
+            const isFlavorsMatch = JSON.stringify(currentBuild.flavors) === JSON.stringify(currentOrder.flavors);
+            const isSyrupMatch = currentBuild.syrup === currentOrder.syrup;
+            const isToppingMatch = (currentOrder.topping === null && currentBuild.toppings.length === 0) || (currentOrder.topping && currentBuild.toppings.includes(currentOrder.topping));
+
+            if (isContainerMatch && isFlavorsMatch && isSyrupMatch && isToppingMatch) {
+                let earnedScore = 100 * currentOrder.customer.scoreMult;
+                if (currentBuild.quality === 'Perfect') earnedScore += 50;
+                if (isFever) earnedScore *= 2;
+                score += Math.round(earnedScore);
+                combo++;
+                playSound('perfect');
+                if (combo >= 3 && !isFever) triggerFever();
+            } else {
+                playSound('fail');
+                combo = 0;
+            }
+
+            document.getElementById('score').innerText = score;
+            document.getElementById('combo-count').innerText = combo;
+            clearInterval(patienceInterval);
+            clearCurrent();
+
+            if (score >= ROUND_CONFIGS[currentRound].targetScore) endRound(true);
+            else generateOrder();
+        }
+
+        function triggerFever() {
+            isFever = true;
+            document.getElementById('fever-banner').classList.remove('hidden');
+            document.body.classList.add('fever-active');
+            timeLeft += 5;
+            clearTimeout(feverTimer);
+            feverTimer = setTimeout(() => {
+                isFever = false;
+                document.getElementById('fever-banner').classList.add('hidden');
+                document.body.classList.remove('fever-active');
+            }, 8000);
+        }
+
+        function startRoundTimer() {
+            clearInterval(gameTimer);
+            gameTimer = setInterval(() => {
+                if (!gameActive || isReplaying) return;
+                timeLeft--;
+                document.getElementById('time-left').innerText = timeLeft;
+                if (timeLeft <= 0) endRound(score >= ROUND_CONFIGS[currentRound].targetScore);
+            }, 1000);
+        }
+
+        // ===== 방명록: 결과 화면에서 플레이어가 직접 남기는 기록 (localStorage 저장) =====
+        // 방명록 데이터는 게임 재시작/점수 초기화와 무관하게 유지되며, '방명록 전체 삭제'로만 지워진다.
+        const GUESTBOOK_KEY = 'icecreamTycoonGuestbook_v1';
+        let guestbookEntries = [];
+        let guestbookStorageFailed = false;
+        let gameStartTime = Date.now();   // 새 게임이 시작된 시점 (라운드가 바뀌거나 화면/메뉴를 열어도 유지됨)
+        let roundScores = {};             // 클리어한 라운드별 점수
+        let pendingRecord = null;         // 현재 결과 화면의 플레이 결과 (아직 저장 전)
+        let lastSavedEntryId = null;
+
+        function resetPlaySession() {
+            gameStartTime = Date.now();
+            roundScores = {};
+            pendingRecord = null;
+            lastSavedEntryId = null;
+        }
+
+        function formatPlayTime(totalSeconds) {
+            const sec = Math.max(0, Math.round(totalSeconds));
+            return Math.floor(sec / 60) + '분 ' + (sec % 60) + '초';
+        }
+
+        function formatGuestbookDate(t) {
+            const d = new Date(t);
+            return isNaN(d.getTime()) ? '-' : d.toLocaleString('ko-KR', { hour12: false });
+        }
+
+        function loadGuestbook() {
+            if (guestbookStorageFailed) return guestbookEntries; // 저장소 쓰기가 실패한 적 있으면 메모리의 목록을 유지
+            try {
+                const raw = localStorage.getItem(GUESTBOOK_KEY);
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    if (Array.isArray(parsed)) guestbookEntries = parsed.filter(e => e && typeof e === 'object');
+                }
+            } catch (e) { /* 저장소를 읽을 수 없으면 현재 메모리의 기록을 그대로 사용 */ }
+            return guestbookEntries;
+        }
+
+        // 저장 후 다시 읽어서 실제로 저장되었는지 확인한다.
+        function persistGuestbook() {
+            try {
+                localStorage.setItem(GUESTBOOK_KEY, JSON.stringify(guestbookEntries));
+                const back = JSON.parse(localStorage.getItem(GUESTBOOK_KEY));
+                return Array.isArray(back) && back.length === guestbookEntries.length;
+            } catch (e) {
+                return false;
+            }
+        }
+
+        // 최종 점수 = 이전에 클리어한 라운드 점수 + 이번 라운드 점수
+        function computeRecordScore() {
+            let total = score;
+            for (let r = 1; r < currentRound; r++) total += roundScores[r] || 0;
+            return total;
+        }
+
+        // 결과 화면이 나타나는 시점(=게임 종료 시점)에 플레이 시간과 점수를 확정한다.
+        // 이후 방명록을 쓰는 시간은 플레이 시간에 포함되지 않는다.
+        function preparePlayRecord() {
+            const endedAt = Date.now();
+            pendingRecord = {
+                playSeconds: Math.max(0, Math.round((endedAt - gameStartTime) / 1000)),
+                score: computeRecordScore(),
+                finishedAt: endedAt,
+                saved: false
+            };
+            document.getElementById('record-time').innerText = formatPlayTime(pendingRecord.playSeconds);
+            document.getElementById('record-score').innerText = pendingRecord.score;
+            document.getElementById('record-nickname').value = '';
+            document.getElementById('record-comment').value = '';
+            document.getElementById('record-error').classList.add('hidden');
+            document.getElementById('record-form').classList.remove('hidden');
+            document.getElementById('record-saved').classList.add('hidden');
+            document.getElementById('record-section').classList.remove('hidden');
+        }
+
+        function saveGuestbookEntry() {
+            const errorEl = document.getElementById('record-error');
+            const nicknameInput = document.getElementById('record-nickname');
+
+            // 1~2. 입력값 가져오기 / 닉네임과 플레이 결과 확인
+            if (!pendingRecord) {
+                errorEl.innerText = '저장할 플레이 결과가 없습니다.';
+                errorEl.classList.remove('hidden');
+                return;
+            }
+            if (pendingRecord.saved) return;
+            const nickname = nicknameInput.value.trim().slice(0, 12);
+            const comment = document.getElementById('record-comment').value.trim().slice(0, 40);
+            if (!nickname) {
+                errorEl.innerText = '닉네임을 입력해 주세요.';
+                errorEl.classList.remove('hidden');
+                nicknameInput.focus();
+                return;
+            }
+            errorEl.classList.add('hidden');
+
+            // 3~4. 기존 방명록 데이터에 새 기록을 추가하고 localStorage에 저장
+            loadGuestbook();
+            const entry = {
+                id: pendingRecord.finishedAt + '-' + Math.random().toString(36).slice(2, 8),
+                nickname: nickname,
+                comment: comment,
+                playSeconds: pendingRecord.playSeconds,
+                score: pendingRecord.score,
+                finishedAt: pendingRecord.finishedAt
+            };
+            guestbookEntries.push(entry);
+            const stored = persistGuestbook();
+            if (!stored) guestbookStorageFailed = true;
+
+            pendingRecord.saved = true;
+            lastSavedEntryId = entry.id;
+
+            // 7. 저장 완료 안내
+            const savedMsg = document.getElementById('record-saved');
+            savedMsg.innerText = stored ? '✅ 방명록이 저장되었습니다!' : '⚠️ 브라우저 저장소를 사용할 수 없어 이번 접속 동안만 보관돼요.';
+            savedMsg.classList.remove('hidden');
+            document.getElementById('record-form').classList.add('hidden');
+
+            // 5~6. 저장된 목록을 다시 불러와 방금 저장한 기록이 즉시 보이도록 방명록을 연다
+            openGuestbookPanel(true);
+        }
+
+        function renderGuestbook() {
+            const list = document.getElementById('guestbook-list');
+            const items = guestbookEntries.slice().sort((a, b) => (Number(b.finishedAt) || 0) - (Number(a.finishedAt) || 0)); // 최신순
+            list.innerHTML = '';
+            document.getElementById('guestbook-count').textContent = '총 ' + items.length + '개의 기록 · 최신순';
+
+            if (items.length === 0) {
+                const empty = document.createElement('div');
+                empty.className = 'text-center text-gray-400 font-bold py-10';
+                empty.textContent = '아직 등록된 방명록이 없습니다.';
+                list.appendChild(empty);
+                return;
+            }
+
+            items.forEach((e) => {
+                const isNew = e.id === lastSavedEntryId;
+                const row = document.createElement('div');
+                row.className = 'rounded-2xl border-2 px-3 py-2 ' + (isNew ? 'bg-yellow-50 border-yellow-400' : 'bg-pink-50 border-pink-200');
+
+                const top = document.createElement('div');
+                top.className = 'flex items-center justify-between gap-2';
+                const name = document.createElement('span');
+                name.className = 'font-black text-lg text-pink-700';
+                name.textContent = '🍦 ' + (e.nickname || '이름 없음') + (isNew ? '  (방금 남긴 기록)' : '');
+                const scoreEl = document.createElement('span');
+                scoreEl.className = 'font-black text-lg text-indigo-600';
+                scoreEl.textContent = (Number(e.score) || 0).toLocaleString('ko-KR') + '점';
+                top.appendChild(name);
+                top.appendChild(scoreEl);
+                row.appendChild(top);
+
+                const meta = document.createElement('div');
+                meta.className = 'text-xs font-bold text-gray-500 mt-0.5';
+                meta.textContent = '⏱️ ' + formatPlayTime(Number(e.playSeconds) || 0) + ' · 📅 ' + formatGuestbookDate(e.finishedAt);
+                row.appendChild(meta);
+
+                if (e.comment) {
+                    const bubble = document.createElement('div');
+                    bubble.className = 'mt-1.5 bg-white border border-pink-200 rounded-xl px-3 py-1.5 text-sm font-bold text-gray-700';
+                    bubble.textContent = '💬 ' + e.comment;
+                    row.appendChild(bubble);
+                }
+                list.appendChild(row);
+            });
+        }
+
+        function openGuestbookPanel(showSavedNotice) {
+            loadGuestbook(); // 저장된 목록을 다시 불러와서 표시
+            renderGuestbook();
+            const notice = document.getElementById('guestbook-notice');
+            if (showSavedNotice === true) {
+                notice.innerText = guestbookStorageFailed ? '⚠️ 브라우저 저장소를 사용할 수 없어 이번 접속 동안만 보관돼요.' : '✅ 방명록이 저장되었습니다!';
+                notice.classList.remove('hidden');
+            } else {
+                notice.classList.add('hidden');
+            }
+            document.getElementById('guestbook-modal').classList.remove('hidden');
+        }
+
+        function closeGuestbookPanel() {
+            document.getElementById('guestbook-modal').classList.add('hidden');
+        }
+
+        function clearGuestbook() {
+            if (!confirm('방명록의 모든 기록을 삭제할까요?\n삭제한 기록은 되돌릴 수 없어요.')) return;
+            guestbookEntries = [];
+            lastSavedEntryId = null;
+            try { localStorage.removeItem(GUESTBOOK_KEY); } catch (e) { /* 무시 */ }
+            renderGuestbook();
+        }
+
+        loadGuestbook();
+
+        function endRound(isSuccess) {
+            gameActive = false;
+            clearInterval(gameTimer);
+            clearInterval(patienceInterval);
+
+            const title = document.getElementById('modal-title');
+            const desc = document.getElementById('modal-desc');
+            const nextBtn = document.getElementById('next-action-btn');
+            if (isSuccess) roundScores[currentRound] = score; // 클리어한 라운드 점수 (최종 점수 합산용)
+
+            if (isSuccess) {
+                if (currentRound < 3) {
+                    title.innerText = `🎉 ROUND ${currentRound} 성공!`;
+                    desc.innerText = `목표 점수 달성! 다음 라운드로 도전하세요.`;
+                    nextBtn.innerText = `ROUND ${currentRound + 1} 시작하기`;
+                    nextBtn.onclick = () => { currentRound++; score = 0; initRoundState(); };
+                } else {
+                    title.innerText = "🏆 모든 라운드 올클리어!";
+                    desc.innerText = "당신은 최고의 아이스크림 마스터입니다!";
+                    nextBtn.innerText = "게임 새로 시작";
+                    nextBtn.onclick = () => showIntro();
+                }
+            } else {
+                title.innerText = "😭 목표 달성 실패!";
+                desc.innerText = `ROUND ${currentRound} 목표 점수에 미달했습니다.`;
+                nextBtn.innerText = "현재 라운드 다시 시도";
+                nextBtn.onclick = () => { score = 0; initRoundState(); };
+            }
+
+            preparePlayRecord(); // 결과 화면이 뜨는 순간을 종료 시점으로 하여 플레이 시간/점수 확정
+            document.getElementById('final-score').innerText = score;
+            document.getElementById('game-modal').classList.remove('hidden');
+        }
+
+        function fullResetGame() {
+            currentRound = 1; score = 0; actionLog = [];
+            resetPlaySession();
+            initRoundState();
+        }
+
+        function initRoundState() {
+            const config = ROUND_CONFIGS[currentRound];
+            timeLeft = config.time; combo = 0; isFever = false; gameActive = true;
+            document.getElementById('round-badge').innerText = `ROUND ${currentRound}`;
+            document.getElementById('target-score').innerText = config.targetScore;
+            document.getElementById('score').innerText = score;
+            document.getElementById('combo-count').innerText = combo;
+            document.getElementById('time-left').innerText = timeLeft;
+            document.getElementById('game-modal').classList.add('hidden');
+            clearCurrent();
+            generateOrder();
+            startRoundTimer();
+        }
+
+        function playReplay() {
+            if (actionLog.length === 0) { alert("기록된 플레이가 없습니다."); return; }
+            document.getElementById('game-modal').classList.add('hidden');
+            isReplaying = true; clearCurrent();
+            let index = 0;
+
+            const playNext = () => {
+                if (index >= actionLog.length) {
+                    clearCurrent();
+                    isReplaying = false;
+                    document.getElementById('game-modal').classList.remove('hidden');
+                    return;
+                }
+                const item = actionLog[index];
+                let delay = 600;
+                if (item.action === 'container') {
+                    // 새 용기를 고른다는 것은 이전 제작이 끝났거나 버려졌다는 뜻이므로 먼저 비우고 콘/컵을 다시 만든다.
+                    clearCurrent();
+                    selectContainer(item.type, true);
+                }
+                else if (item.action === 'scoop') { currentBuild.quality = item.quality; addScoopMesh(item.flavor); }
+                else if (item.action === 'syrup') addSyrup(item.type, true);
+                else if (item.action === 'topping') addTopping(item.type, true);
+                else if (item.action === 'serve') delay = 1000; // 완성된 아이스크림을 잠시 보여준 뒤 다음 단계에서 정리
+                index++;
+                setTimeout(playNext, delay);
+            };
+            setTimeout(playNext, 600);
+        }
+
+        const guestbookCanvas = document.getElementById('guestbook-canvas');
+        const gCtx = guestbookCanvas.getContext('2d');
+        let isDrawing = false, strokeColor = '#ec4899';
+        gCtx.lineWidth = 3; gCtx.lineCap = 'round';
+
+        function setCanvasColor(color) { strokeColor = color; }
+        function clearGuestbookCanvas() { gCtx.clearRect(0, 0, guestbookCanvas.width, guestbookCanvas.height); }
+        function getCoords(e) {
+            const rect = guestbookCanvas.getBoundingClientRect();
+            return { x: (e.clientX || e.touches[0].clientX) - rect.left, y: (e.clientY || e.touches[0].clientY) - rect.top };
+        }
+        guestbookCanvas.addEventListener('mousedown', (e) => { isDrawing = true; const c = getCoords(e); gCtx.beginPath(); gCtx.moveTo(c.x, c.y); });
+        guestbookCanvas.addEventListener('mousemove', (e) => { if (!isDrawing) return; const c = getCoords(e); gCtx.strokeStyle = strokeColor; gCtx.lineTo(c.x, c.y); gCtx.stroke(); });
+        window.addEventListener('mouseup', () => { isDrawing = false; });
+        guestbookCanvas.addEventListener('touchstart', (e) => { e.preventDefault(); isDrawing = true; const c = getCoords(e); gCtx.beginPath(); gCtx.moveTo(c.x, c.y); });
+        guestbookCanvas.addEventListener('touchmove', (e) => { e.preventDefault(); if (!isDrawing) return; const c = getCoords(e); gCtx.strokeStyle = strokeColor; gCtx.lineTo(c.x, c.y); gCtx.stroke(); });
+        guestbookCanvas.addEventListener('touchend', () => { isDrawing = false; });
+
+        function animate() {
+            requestAnimationFrame(animate);
+            currentMeshGroup.rotation.y += 0.005;
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // ===== 인트로 화면 =====
+        // 시작하기 버튼을 누르기 전에는 타이머, 주문 생성 등 게임 진행이 전혀 시작되지 않는다.
+        // (게임 시작 처리는 기존 fullResetGame()을 그대로 사용: 라운드/점수 초기화 + 플레이 시간 측정 시작 + 첫 주문 생성)
+        let introActive = false;
+        let introHideTimer = null;
+
+        function startGame() {
+            if (!introActive) return;
+            introActive = false;
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            document.getElementById('ui-overlay').inert = false;
+            const intro = document.getElementById('intro-screen');
+            intro.classList.add('opacity-0', 'pointer-events-none');
+            clearTimeout(introHideTimer);
+            introHideTimer = setTimeout(() => intro.classList.add('hidden'), 500);
+            fullResetGame();
+        }
+
+        function showIntro() {
+            clearInterval(gameTimer);
+            clearInterval(patienceInterval);
+            clearTimeout(feverTimer);
+            gameActive = false;
+            isFever = false;
+            document.getElementById('fever-banner').classList.add('hidden');
+            document.body.classList.remove('fever-active');
+            clearCurrent();
+            document.getElementById('game-modal').classList.add('hidden');
+            document.getElementById('guestbook-modal').classList.add('hidden');
+            document.getElementById('ui-overlay').inert = true; // 인트로 뒤의 게임 버튼이 키보드로도 눌리지 않도록
+            clearTimeout(introHideTimer);
+            document.getElementById('intro-screen').classList.remove('hidden', 'opacity-0', 'pointer-events-none');
+            introActive = true;
+        }
+
+        showIntro();
+        animate();
+    </script>
+</body>
+</html>
